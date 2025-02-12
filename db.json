@@ -1,0 +1,10 @@
+[
+  {
+    "eventType": "user.created",
+    "data": {
+      "userId": "123",
+      "email": "test@example.com"
+    },
+    "timestamp": "2025-02-12T06:27:18.402Z"
+  }
+]
