@@ -1,36 +1,149 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Webhook Implementation Guide
 
-## Getting Started
+## Setup Instructions
 
-First, run the development server:
-
+### 1. Environment Variables
+Add these to your `.env.local`:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+WEBHOOK_SECRET=your-secret-here  # Used for signature verification
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. File Structure
+```
+/e:/everything_green/
+├── app/
+│   └── api/
+│       └── webhook/
+│           └── route.ts         # Webhook endpoint handler
+├── utils/
+│   └── verify-signature.ts      # Signature verification utility
+├── types/
+│   └── webhook.ts              # TypeScript interfaces
+├── generate-signature.js        # Helper for testing
+└── db.json                     # Webhook data storage
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Testing the Webhook
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+#### Method 1: Using Postman
 
-## Learn More
+1. Start your server:
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+2. Generate signature:
+```bash
+node generate-signature.js
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Postman Setup:
+- Method: POST
+- URL: `http://localhost:3000/api/webhook`
+- Headers:
+  ```
+  Content-Type: application/json
+  x-webhook-signature: <signature from generate-signature.js>
+  ```
+- Body (raw JSON):
+  ```json
+  {
+    "eventType": "user.created",
+    "data": {
+      "userId": "123",
+      "email": "test@example.com"
+    }
+  }
+  ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+#### Method 2: Using cURL
+```bash
+# Replace 'your-secret-here' with your WEBHOOK_SECRET
+PAYLOAD='{"eventType":"user.created","data":{"userId":"123","email":"test@example.com"}}'
+SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "your-secret-here" -hex | cut -d' ' -f2)
 
-## Deploy on Vercel
+curl -X POST http://localhost:3000/api/webhook \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-signature: $SIGNATURE" \
+  -d "$PAYLOAD"
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 4. Expected Responses
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+#### Success (200 OK)
+```json
+{
+  "success": true,
+  "message": "Received"
+}
+```
+
+#### Error Cases
+- Missing Signature (401)
+```json
+{
+  "success": false,
+  "message": "No signature provided"
+}
+```
+
+- Invalid Signature (401)
+```json
+{
+  "success": false,
+  "message": "Invalid signature"
+}
+```
+
+- Server Error (500)
+```json
+{
+  "success": false,
+  "message": "Internal server error"
+}
+```
+
+### 5. Data Storage
+- Webhook data is stored in `db.json`
+- Format:
+```json
+[
+  {
+    "eventType": "user.created",
+    "data": {
+      "userId": "123",
+      "email": "test@example.com"
+    },
+    "timestamp": "2024-02-12T06:27:18.402Z"
+  }
+]
+```
+
+### 6. Security Notes
+- Always keep your WEBHOOK_SECRET secure
+- Never commit .env files to version control
+- Use HTTPS in production
+- Consider rate limiting for production use
+
+### 7. Webhook Payload Structure
+```typescript
+interface WebhookPayload {
+  eventType: string;     // Type of event (e.g., "user.created")
+  data: Record<string, any>; // Event data
+  timestamp?: string;    // Added automatically by the server
+}
+```
+
+### 8. Troubleshooting
+1. If signature verification fails:
+   - Ensure WEBHOOK_SECRET matches in both sender and receiver
+   - Check if payload is exactly the same
+   - Verify signature is being generated correctly
+
+2. If db.json isn't created:
+   - Check write permissions in project directory
+   - Ensure the process has filesystem access
+
+3. If server doesn't start:
+   - Verify all environment variables are set
+   - Check for port conflicts
